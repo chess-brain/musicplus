@@ -17,22 +17,31 @@ class musicplusExtension {
         this.distortionGain = null;
         this.activeSources = [];
         this.activeTimeouts = [];
+        this.pendingResolves = [];
         this.analyser = null;
         this.micStream = null;
         this.micSource = null;
         this.micInitialized = false;
         this.micDataArray = null;
         this.micTimeDataArray = null;
+        this.pannerNode = null;
+        this.metronomeTimer = null;
+        this.metronomePlaying = false;
         this.tempo = 60;
         this.swing = 0;
         this.globalFilterFreq = -1;
         this.currentInstrument = 'piano';
         this.pitchOffset = 0;
         this.noiseBuffers = {};
-        this._initAudio(); 
+        this.stopped = false;
+        this.scoreData = null;
+        this.scoreIndex = 0;
+        this.scorePlaying = false;
+        this.savedScores = {};
+        this._initAudio();
         this.version1 = 1;
         this.version2 = 2;
-        this.version3 = 1;
+        this.version3 = 4;
         this.beta = false;
         this.beta_num = 1;
         this.version = `V${this.version1}.${this.version2}.${this.version3}${this.beta ? ' beta ' + this.beta_num : ''}`;
@@ -324,7 +333,7 @@ class musicplusExtension {
         return {
             id: 'musicplus',
             name: '音乐 +',
-            blockIconURI: 'data:image/svg+xml;base64,PHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHdpZHRoPSI0My4xMzYiIGhlaWdodD0iNTQuNjg3MDYiIHZpZXdCb3g9IjAsMCw0My4xMzYsNTQuNjg3MDYiPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMTguNDMyLC0xNTIuNjU2NDcpIj48ZyBzdHJva2U9IiMwMDAwMDAiIHN0cm9rZS13aWR0aD0iMCIgc3Ryb2tlLW1pdGVybGltaXQ9IjEwIj48cGF0aCBkPSJNMjM4LjQ0NjM2LDE5OS40MTkxNWMwLDQuMDEwNDEgLTQuMTgxODksNy45MjQzNyAtOS4zNDA1Miw3LjkyNDM3Yy01LjE1ODYzLDAgLTkuMzQwNTIsLTMuOTEzOTYgLTkuMzQwNTIsLTcuOTI0MzdjMCwtNC4wMTA0MSA0LjE4MTg5LC03LjYyMzA2IDkuMzQwNTIsLTcuNjIzMDZjMS42MjExNCwwIDMuMTQ1ODIsMC4zMjEwNyA0LjQ3NDU3LDAuODg1ODhjMC4yMjQzLDAuMDk1MzUgMC42NTU2NywwLjMwNjUgMC42NTU2NywwLjMwNjVsMC4yNTg3NCwtMzIuNTA3MjdjMCwwIDYuNjA0NCw1LjE0OTQ3IDcuNzQ3NjIsNy4xMDA0NWMxLjE0MzIzLDEuOTUwOTggNS4zNjM4MSwxNi4yMDg5IDUuMzY5ODcsMTcuODM0NTZjMC4wMDE0NSwwLjM4ODg5IC0yLjgzODkyLC02LjYyMjk4IC01LjkxODY1LC0xMS4wNzYzOWMtMi4zOTc4MSwtMy40NjczMSAtMy4zNzE3MSwtNC4wMDg2MSAtMy4zNzE3MSwtNC4wMDg2MWMwLDAgMC4xMjQ0MywyOC44ODE4OCAwLjEyNDQzLDI5LjA4Nzk1eiIgZmlsbD0iIzM3M2I3NyIvPjxwYXRoIGQ9Ik0yNTAuNzQ1MjcsMTY0LjY2NTY3YzAsMCAtMy45NTI3NCwwLjAzNTI5IC00Ljk2ODkzLDAuMDQ0MzZjLTAuNDQ5NjYsMC4wMDQwMiAtMC45NzI5NywwLjAwODY5IC0wLjk3Mjk3LDAuMDA4Njl2LTUuMTk5MTVsNS45NDE5LC0wLjA1MzA2bDAuMDUzMDUsLTYuMDQ4aDQuOTg2OTVsMC4wNTMwNCw2LjA0OGw1LjcyOTY5LC0wLjA1MzA0djUuMDkzMDVsLTUuNzI5NjgsMC4wNTMwNWwtMC4wNTMwNSw1LjcyOTY4aC01LjA5MzA1eiIgZmlsbD0iIzRhMDUxOSIvPjxwYXRoIGQ9Ik0yMzcuMTEzMDMsMTk3LjI1MjQ5YzAsNC4wMTA0MSAtNC4xODE4OSw3LjkyNDM3IC05LjM0MDUxLDcuOTI0MzdjLTUuMTU4NjMsMCAtOS4zNDA1MiwtMy45MTM5NiAtOS4zNDA1MiwtNy45MjQzN2MwLC00LjAxMDQxIDQuMTgxODksLTcuNjIzMDYgOS4zNDA1MiwtNy42MjMwNmMxLjYyMTE0LDAgMy4xNDU4MiwwLjMyMTA3IDQuNDc0NTYsMC44ODU4OGMwLjIyNDMsMC4wOTUzNSAwLjY1NTY3LDAuMzA2NSAwLjY1NTY3LDAuMzA2NWwwLjI1ODc0LC0zMi41MDcyN2MwLDAgNi42MDQ0LDUuMTQ5NDcgNy43NDc2Miw3LjEwMDQ1YzEuMTQzMjMsMS45NTA5OCA1LjM2MzgsMTYuMjA4OSA1LjM2OTg2LDE3LjgzNDU2YzAuMDAxNDUsMC4zODg4OSAtMi44Mzg5MSwtNi42MjI5OSAtNS45MTg2NSwtMTEuMDc2MzljLTIuMzk3ODEsLTMuNDY3MzEgLTMuMzcxNzEsLTQuMDA4NjEgLTMuMzcxNzEsLTQuMDA4NjFjMCwwIDAuMTI0NDMsMjguODgxODggMC4xMjQ0MywyOS4wODc5NXoiIGZpbGw9IiM3NjdlZmYiLz48cGF0aCBkPSJNMjQ5Ljc2NTUyLDE2My45MDM2NGwtNS45NDE4OSwwLjA1MzA1di01LjE5OTE1bDUuOTQxODksLTAuMDUzMDZsMC4wNTMwNSwtNi4wNDhoNC45ODY5NGwwLjA1MzA1LDYuMDQ4bDUuNzI5NjgsLTAuMDUzMDR2NS4wOTMwNWwtNS43Mjk2OCwwLjA1MzA1bC0wLjA1MzA1LDUuNzI5NjloLTUuMDkzMDV6IiBmaWxsPSIjZWExMDRlIi8+PC9nPjwvZz48L3N2Zz48IS0tcm90YXRpb25DZW50ZXI6MjEuNTY3OTk4MzMzMzMzMzI6MjcuMzQzNTI5MTY2NjY2NjU2LS0+',
+            blockIconURI: 'image/svg+xml;base64,PHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHdpZHRoPSI0My4xMzYiIGhlaWdodD0iNTQuNjg3MDYiIHZpZXdCb3g9IjAsMCw0My4xMzYsNTQuNjg3MDYiPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMTguNDMyLC0xNTIuNjU2NDcpIj48ZyBzdHJva2U9IiMwMDAwMDAiIHN0cm9rZS13aWR0aD0iMCIgc3Ryb2tlLW1pdGVybGltaXQ9IjEwIj48cGF0aCBkPSJNMjM4LjQ0NjM2LDE5OS40MTkxNWMwLDQuMDEwNDEgLTQuMTgxODksNy45MjQzNyAtOS4zNDA1Miw3LjkyNDM3Yy01LjE1ODYzLDAgLTkuMzQwNTIsLTMuOTEzOTYgLTkuMzQwNTIsLTcuOTI0MzdjMCwtNC4wMTA0MSA0LjE4MTg5LC03LjYyMzA2IDkuMzQwNTIsLTcuNjIzMDZjMS42MjExNCwwIDMuMTQ1ODIsMC4zMjEwNyA0LjQ3NDU3LDAuODg1ODhjMC4yMjQzLDAuMDk1MzUgMC42NTU2NywwLjMwNjUgMC42NTU2NywwLjMwNjVsMC4yNTg3NCwtMzIuNTA3MjdjMCwwIDYuNjA0NCw1LjE0OTQ3IDcuNzQ3NjIsNy4xMDA0NWMxLjE0MzIzLDEuOTUwOTggNS4zNjM4MSwxNi4yMDg5IDUuMzY5ODcsMTcuODM0NTZjMC4wMDE0NSwwLjM4ODg5IC0yLjgzODkyLC02LjYyMjk4IC01LjkxODY1LC0xMS4wNzYzOWMtMi4zOTc4MSwtMy40NjczMSAtMy4zNzE3MSwtNC4wMDg2MSAtMy4zNzE3MSwtNC4wMDg2MWMwLDAgMC4xMjQ0MywyOC44ODE4OCAwLjEyNDQzLDI5LjA4Nzk1eiIgZmlsbD0iIzM3M2I3NyIvPjxwYXRoIGQ9Ik0yNTAuNzQ1MjcsMTY0LjY2NTY3YzAsMCAtMy45NTI3NCwwLjAzNTI5IC00Ljk2ODkzLDAuMDQ0MzZjLTAuNDQ5NjYsMC4wMDQwMiAtMC45NzI5NywwLjAwODY5IC0wLjk3Mjk3LDAuMDA4Njl2LTUuMTk5MTVsNS45NDE5LC0wLjA1MzA2bDAuMDUzMDUsLTYuMDQ4aDQuOTg2OTVsMC4wNTMwNCw2LjA0OGw1LjcyOTY5LC0wLjA1MzA0djUuMDkzMDVsLTUuNzI5NjgsMC4wNTMwNWwtMC4wNTMwNSw1LjcyOTY4aC01LjA5MzA1eiIgZmlsbD0iIzRhMDUxOSIvPjxwYXRoIGQ9Ik0yMzcuMTEzMDMsMTk3LjI1MjQ5YzAsNC4wMTA0MSAtNC4xODE4OSw3LjkyNDM3IC05LjM0MDUxLDcuOTI0MzdjLTUuMTU4NjMsMCAtOS4zNDA1MiwtMy45MTM5NiAtOS4zNDA1MiwtNy45MjQzN2MwLC00LjAxMDQxIDQuMTgxODksLTcuNjIzMDYgOS4zNDA1MiwtNy42MjMwNmMxLjYyMTE0LDAgMy4xNDU4MiwwLjMyMTA3IDQuNDc0NTYsMC44ODU4OGMwLjIyNDMsMC4wOTUzNSAwLjY1NTY3LDAuMzA2NSAwLjY1NTY3LDAuMzA2NWwwLjI1ODc0LC0zMi41MDcyN2MwLDAgNi42MDQ0LDUuMTQ5NDcgNy43NDc2Miw3LjEwMDQ1YzEuMTQzMjMsMS45NTA5OCA1LjM2MzgsMTYuMjA4OSA1LjM2OTg2LDE3LjgzNDU2YzAuMDAxNDUsMC4zODg4OSAtMi44Mzg5MSwtNi42MjI5OSAtNS45MTg2NSwtMTEuMDc2MzljLTIuMzk3ODEsLTMuNDY3MzEgLTMuMzcxNzEsLTQuMDA4NjEgLTMuMzcxNzEsLTQuMDA4NjFjMCwwIDAuMTI0NDMsMjguODgxODggMC4xMjQ0MywyOS4wODc5NXoiIGZpbGw9IiM3NjdlZmYiLz48cGF0aCBkPSJNMjQ5Ljc2NTUyLDE2My45MDM2NGwtNS45NDE4OSwwLjA1MzA1di01LjE5OTE1bDUuOTQxODksLTAuMDUzMDZsMC4wNTMwNSwtNi4wNDhoNC45ODY5NGwwLjA1MzA1LDYuMDQ4bDUuNzI5NjgsLTAuMDUzMDR2NS4wOTMwNWwtNS43Mjk2OCwwLjA1MzA1bC0wLjA1MzA1LDUuNzI5NjloLTUuMDkzMDV6IiBmaWxsPSIjZWExMDRlIi8+PC9nPjwvZz48L3N2Zz48IS0tcm90YXRpb25DZW50ZXI6MjEuNTY3OTk4MzMzMzMzMzI6MjcuMzQzNTI5MTY2NjY2NjU2LS0+',
             color1: '#0DA57A',
             color2: '#0B8E69',
             color3: '#097A5A',
@@ -425,6 +434,25 @@ class musicplusExtension {
                         BEATS: {
                             type: Scratch.ArgumentType.NUMBER,
                             defaultValue: 0.25
+                        }
+                    }
+                },
+                {
+                    opcode: 'playSequenceLoop',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '循环播放序列 [SEQUENCE] 每个音符 [BEATS] 拍 循环 [LOOP] 次',
+                    arguments: {
+                        SEQUENCE: {
+                            type: Scratch.ArgumentType.STRING,
+                            defaultValue: '60, 62, 64'
+                        },
+                        BEATS: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 0.25
+                        },
+                        LOOP: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 2
                         }
                     }
                 },
@@ -565,6 +593,29 @@ class musicplusExtension {
                     }
                 },
                 {
+                    opcode: 'setEnvelope',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '设置包络 起 [ATTACK] 衰 [DECAY] 延 [SUSTAIN] 放 [RELEASE]',
+                    arguments: {
+                        ATTACK: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 0.01
+                        },
+                        DECAY: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 0.3
+                        },
+                        SUSTAIN: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 0.5
+                        },
+                        RELEASE: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 0.5
+                        }
+                    }
+                },
+                {
                     opcode: 'stopAll',
                     blockType: Scratch.BlockType.COMMAND,
                     text: '💥 停止所有声音'
@@ -686,6 +737,21 @@ class musicplusExtension {
                         MIX: {
                             type: Scratch.ArgumentType.NUMBER,
                             defaultValue: 30
+                        }
+                    }
+                },
+                {
+                    opcode: 'setTremolo',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '设置颤音 深度 [DEPTH]% 速率 [RATE] Hz',
+                    arguments: {
+                        DEPTH: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 50
+                        },
+                        RATE: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 5
                         }
                     }
                 },
@@ -854,6 +920,156 @@ class musicplusExtension {
                     blockType: Scratch.BlockType.REPORTER,
                     text: '🎤 麦克风音量 (0-100)',
                     disableMonitor: false
+                },
+                {
+                    opcode: 'label6',
+                    blockType: Scratch.BlockType.LABEL,
+                    text: '———— 扩展 ————'
+                },
+                {
+                    opcode: 'setPan',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '设置声像 [PAN] %',
+                    arguments: {
+                        PAN: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 0
+                        }
+                    }
+                },
+                {
+                    opcode: 'startMetronome',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '启动节拍器 音量 [VOLUME] %',
+                    arguments: {
+                        VOLUME: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 50
+                        }
+                    }
+                },
+                {
+                    opcode: 'stopMetronome',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '停止节拍器'
+                },
+                {
+                    opcode: 'clearEffects',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '清除所有效果'
+                },
+                {
+                    opcode: 'getIsPlaying',
+                    blockType: Scratch.BlockType.REPORTER,
+                    text: '是否正在演奏',
+                    disableMonitor: false
+                },
+                {
+                    opcode: 'getRandomNote',
+                    blockType: Scratch.BlockType.REPORTER,
+                    text: '随机音符 [MIN] 到 [MAX]',
+                    arguments: {
+                        MIN: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 60
+                        },
+                        MAX: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 72
+                        }
+                    }
+                },
+                {
+                    opcode: 'label7',
+                    blockType: Scratch.BlockType.LABEL,
+                    text: '———— 乐谱 ————'
+                },
+                {
+                    opcode: 'loadScore',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '加载乐谱 [SCORE]',
+                    arguments: {
+                        SCORE: {
+                            type: Scratch.ArgumentType.STRING,
+                            defaultValue: '60-0.5\n62-0.5\n64-0.5'
+                        }
+                    }
+                },
+                {
+                    opcode: 'playScore',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '播放乐谱',
+                    arguments: {
+                    }
+                },
+                {
+                    opcode: 'stopScore',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '停止播放乐谱',
+                    arguments: {
+                    }
+                },
+                {
+                    opcode: 'getScoreProgress',
+                    blockType: Scratch.BlockType.REPORTER,
+                    text: '乐谱播放进度 (%)',
+                    disableMonitor: false
+                },
+                {
+                    opcode: 'getScoreLength',
+                    blockType: Scratch.BlockType.REPORTER,
+                    text: '乐谱总音符数',
+                    disableMonitor: false
+                },
+                {
+                    opcode: 'getCurrentNote',
+                    blockType: Scratch.BlockType.REPORTER,
+                    text: '当前演奏音符',
+                    disableMonitor: false
+                },
+                {
+                    opcode: 'saveScore',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '保存乐谱 名称 [NAME]',
+                    arguments: {
+                        NAME: {
+                            type: Scratch.ArgumentType.STRING,
+                            defaultValue: 'myscore'
+                        }
+                    }
+                },
+                {
+                    opcode: 'loadSavedScore',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '加载已保存乐谱 [NAME]',
+                    arguments: {
+                        NAME: {
+                            type: Scratch.ArgumentType.STRING,
+                            defaultValue: 'myscore'
+                        }
+                    }
+                },
+                {
+                    opcode: 'getScoreNoteCount',
+                    blockType: Scratch.BlockType.REPORTER,
+                    text: '乐谱 [NAME] 音符数',
+                    arguments: {
+                        NAME: {
+                            type: Scratch.ArgumentType.STRING,
+                            defaultValue: 'myscore'
+                        }
+                    }
+                },
+                {
+                    opcode: 'parseScoreLine',
+                    blockType: Scratch.BlockType.REPORTER,
+                    text: '解析乐谱行 [LINE]',
+                    arguments: {
+                        LINE: {
+                            type: Scratch.ArgumentType.STRING,
+                            defaultValue: '60-0.5-62-0.5'
+                        }
+                    }
                 }
             ],
             menus: {
@@ -962,7 +1178,8 @@ class musicplusExtension {
                         { text: '混响', value: 'reverb' },
                         { text: '延迟', value: 'delay' },
                         { text: '合唱', value: 'chorus' },
-                        { text: '失真', value: 'distortion' }
+                        { text: '失真', value: 'distortion' },
+                        { text: '颤音', value: 'tremolo' }
                     ]
                 }
             }
@@ -975,8 +1192,11 @@ class musicplusExtension {
             this.inputGain.gain.value = 0.8;
             this.masterGain = this.audioContext.createGain();
             this.masterGain.gain.value = 0.5;
+            this.pannerNode = this.audioContext.createStereoPanner();
+            this.pannerNode.pan.value = 0;
             this.inputGain.connect(this.masterGain);
-            this.masterGain.connect(this.audioContext.destination);
+            this.masterGain.connect(this.pannerNode);
+            this.pannerNode.connect(this.audioContext.destination);
             this._createReverb();
             this._createNoiseBuffers();
             this.analyser = this.audioContext.createAnalyser();
@@ -997,7 +1217,7 @@ class musicplusExtension {
         navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             this.micStream = stream;
             this.micSource = this.audioContext.createMediaStreamSource(stream);
-            this.micSource.connect(this.analyser);
+            this.micSource.connect(this.inputGain);
             this.micInitialized = true;
         }).catch(err => {
             console.warn('Mic access denied or not available', err);
@@ -1093,11 +1313,34 @@ class musicplusExtension {
         this.chorusLFOGain.gain.value = 0.015;
         this.chorusMixGain.gain.value = 0.4;
     }
+    _initTremolo() {
+        if (this.tremoloInitialized) return;
+        const ctx = this.audioContext;
+        this.tremoloGain = ctx.createGain();
+        this.tremoloLFO = ctx.createOscillator();
+        this.tremoloLFOGain = ctx.createGain();
+        this.tremoloLFO.connect(this.tremoloLFOGain);
+        this.tremoloLFOGain.connect(this.tremoloGain.gain);
+        this.tremoloLFO.type = 'sine';
+        this.tremoloLFO.start();
+        this.inputGain.disconnect(this.masterGain);
+        this.inputGain.connect(this.tremoloGain);
+        this.tremoloGain.connect(this.masterGain);
+        this.tremoloGain.gain.value = 1;
+        this.tremoloLFO.frequency.value = 5;
+        this.tremoloLFOGain.gain.value = 0;
+        this.tremoloInitialized = true;
+    }
     stopAll() {
+        this.stopped = true;
+        this.scorePlaying = false;
         const now = this.audioContext ? this.audioContext.currentTime : 0;
         this.activeTimeouts.forEach(id => clearTimeout(id));
+        this.pendingResolves.forEach(resolve => resolve());
         this.activeTimeouts = [];
-        this.activeSources.forEach(source => {
+        this.pendingResolves = [];
+        const sources = this.activeSources.slice();
+        sources.forEach(source => {
             try {
                 if (source.stop) source.stop(now);
                 if (source.disconnect) source.disconnect();
@@ -1108,6 +1351,131 @@ class musicplusExtension {
             this.masterGain.gain.cancelScheduledValues(now);
             this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
         }
+    }
+    parseScoreLine(line) {
+        const trimmed = line.trim();
+        if (trimmed === '0' || trimmed === '') {
+            return { notes: [], duration: 0.5, isRest: true };
+        }
+        const parts = trimmed.split('-');
+        const notes = [];
+        let duration = 0.5;
+        for (let i = 0; i < parts.length; i += 2) {
+            const noteNum = parseInt(parts[i]);
+            if (isNaN(noteNum)) continue;
+            notes.push(noteNum);
+            if (i + 1 < parts.length) {
+                const dur = parseFloat(parts[i + 1]);
+                if (!isNaN(dur)) {
+                    duration = dur;
+                }
+            }
+        }
+        if (notes.length === 0) {
+            return { notes: [], duration: 0.5, isRest: true };
+        }
+        return { notes, duration, isRest: false };
+    }
+    parseScoreText(text) {
+        const lines = text.split('\n');
+        const score = [];
+        for (const line of lines) {
+            const parsed = this.parseScoreLine(line);
+            if (parsed.notes.length > 0 || parsed.isRest) {
+                score.push(parsed);
+            }
+        }
+        return score;
+    }
+    loadScore(args) {
+        const scoreText = args.SCORE;
+        this.scoreData = this.parseScoreText(scoreText);
+        this.scoreIndex = 0;
+        return Promise.resolve();
+    }
+    async playScore() {
+        if (!this.scoreData || this.scoreData.length === 0) {
+            return Promise.resolve();
+        }
+        this._initAudio();
+        this.stopped = false;
+        this.scorePlaying = true;
+        this.scoreIndex = 0;
+        const totalNotes = this.scoreData.length;
+        for (let i = 0; i < this.scoreData.length; i++) {
+            if (this.stopped || !this.scorePlaying) {
+                break;
+            }
+            const event = this.scoreData[i];
+            this.scoreIndex = i;
+            if (event.isRest) {
+                await this.rest({ BEATS: event.duration });
+            } else {
+                if (event.notes.length === 1) {
+                    await this.playNote({ NOTE: event.notes[0], BEATS: event.duration });
+                } else {
+                    const ctx = this.audioContext;
+                    const now = ctx.currentTime;
+                    const duration = 60 / this.tempo * event.duration;
+                    const promises = event.notes.map((note, idx) => {
+                        return this._playNoteAdvanced(note, duration, now + idx * 0.01);
+                    });
+                    await Promise.all(promises);
+                    await new Promise(resolve => {
+                        const id = setTimeout(resolve, duration * 1000);
+                        this.activeTimeouts.push(id);
+                        this.pendingResolves.push(resolve);
+                    });
+                }
+            }
+        }
+        this.scorePlaying = false;
+        this.scoreIndex = 0;
+    }
+    stopScore() {
+        this.stopped = true;
+        this.scorePlaying = false;
+        this.scoreIndex = 0;
+    }
+    getScoreProgress() {
+        if (!this.scoreData || this.scoreData.length === 0) return 0;
+        return Math.round((this.scoreIndex / this.scoreData.length) * 100);
+    }
+    getScoreLength() {
+        if (!this.scoreData) return 0;
+        return this.scoreData.length;
+    }
+    getCurrentNote() {
+        if (!this.scoreData || this.scoreIndex >= this.scoreData.length) return '';
+        const event = this.scoreData[this.scoreIndex];
+        if (event.isRest) return '休止';
+        return event.notes.join(',');
+    }
+    saveScore(args) {
+        const name = args.NAME;
+        if (this.scoreData) {
+            this.savedScores[name] = JSON.parse(JSON.stringify(this.scoreData));
+        }
+        return Promise.resolve();
+    }
+    loadSavedScore(args) {
+        const name = args.NAME;
+        if (this.savedScores[name]) {
+            this.scoreData = JSON.parse(JSON.stringify(this.savedScores[name]));
+            this.scoreIndex = 0;
+        }
+        return Promise.resolve();
+    }
+    getScoreNoteCount(args) {
+        const name = args.NAME;
+        if (this.savedScores[name]) {
+            let count = 0;
+            for (const event of this.savedScores[name]) {
+                count += event.notes.length;
+            }
+            return count;
+        }
+        return 0;
     }
     playDrum(args) {
         this._initAudio();
@@ -1168,7 +1536,11 @@ class musicplusExtension {
             if (tIdx > -1) this.activeTimeouts.splice(tIdx, 1);
         }, duration * 1000);
         this.activeTimeouts.push(timeoutId);
-        return new Promise(resolve => setTimeout(resolve, duration * 1000));
+        return new Promise(resolve => {
+            const id = setTimeout(resolve, duration * 1000);
+            this.activeTimeouts.push(id);
+            this.pendingResolves.push(resolve);
+        });
     }
     rest(args) {
         const beats = args.BEATS;
@@ -1176,6 +1548,7 @@ class musicplusExtension {
         return new Promise(resolve => {
             const id = setTimeout(resolve, duration * 1000);
             this.activeTimeouts.push(id);
+            this.pendingResolves.push(resolve);
         });
     }
     playNote(args) {
@@ -1228,6 +1601,7 @@ class musicplusExtension {
             return new Promise(resolve => {
                 const id = setTimeout(resolve, duration * 1000);
                 this.activeTimeouts.push(id);
+                this.pendingResolves.push(resolve);
             });
         });
     }
@@ -1314,11 +1688,21 @@ class musicplusExtension {
         return new Promise(resolve => {
             const id = setTimeout(resolve, duration * 1000);
             this.activeTimeouts.push(id);
+            this.pendingResolves.push(resolve);
         });
     }
     setInstrument(args) {
         if (this.instruments[args.INSTRUMENT]) {
             this.currentInstrument = args.INSTRUMENT;
+        }
+    }
+    setEnvelope(args) {
+        const inst = this.instruments[this.currentInstrument];
+        if (inst) {
+            inst.envelope.attack = Math.max(0, parseFloat(args.ATTACK));
+            inst.envelope.decay = Math.max(0, parseFloat(args.DECAY));
+            inst.envelope.sustain = Math.max(0, Math.min(1, parseFloat(args.SUSTAIN)));
+            inst.envelope.release = Math.max(0, parseFloat(args.RELEASE));
         }
     }
     setTempo(args) {
@@ -1342,6 +1726,7 @@ class musicplusExtension {
         else if (effect === 'delay') this.setDelay({ FEEDBACK: 50, TIME: 0.3, MIX: amount });
         else if (effect === 'chorus') this.setChorus({ DEPTH: 50, RATE: 1.5, MIX: amount });
         else if (effect === 'distortion') this.setDistortion({ AMOUNT: amount });
+        else if (effect === 'tremolo') this.setTremolo({ DEPTH: amount, RATE: 5 });
     }
     setPitch(args) {
         const pitch = Math.max(-12, Math.min(12, parseInt(args.PITCH)));
@@ -1396,10 +1781,12 @@ class musicplusExtension {
         return new Promise(resolve => {
             const id = setTimeout(resolve, totalDuration * 1000);
             this.activeTimeouts.push(id);
+            this.pendingResolves.push(resolve);
         });
     }
     arpeggiator(args) {
         this._initAudio();
+        this.stopped = false;
         const root = parseInt(args.ROOT);
         const chordType = args.CHORD;
         const beatsPerNote = parseFloat(args.BEATS);
@@ -1412,12 +1799,16 @@ class musicplusExtension {
         const noteCount = Math.floor(totalArpDuration / durationPerNote);
         const playArpSequence = async () => {
             for (let i = 0; i < noteCount; i++) {
+                if (this.stopped) break;
                 const noteIndex = i % notes.length;
                 const swingOffset = (this.swing > 0 && i % 2 === 1) ? (durationPerNote * this.swing / 100) : 0;
                 await this._playNoteAdvanced(notes[noteIndex], durationPerNote * 0.8);
                 await new Promise(resolve => {
-                    const id = setTimeout(resolve, (durationPerNote + swingOffset) * 1000);
+                    const id = setTimeout(() => {
+                        if (!this.stopped) resolve();
+                    }, (durationPerNote + swingOffset) * 1000);
                     this.activeTimeouts.push(id);
+                    this.pendingResolves.push(resolve);
                 });
             }
         };
@@ -1425,19 +1816,53 @@ class musicplusExtension {
     }
     playSequence(args) {
         this._initAudio();
+        this.stopped = false;
         const sequenceStr = args.SEQUENCE;
         const beats = parseFloat(args.BEATS);
         const sequence = sequenceStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
         const playSeq = async () => {
             for (let i = 0; i < sequence.length; i++) {
+                if (this.stopped) break;
                 const note = sequence[i];
                 await this.playNote({ NOTE: note, BEATS: beats });
                 if (this.swing > 0 && i % 2 === 1) {
                     const swingDelay = (60 / this.tempo * beats) * (this.swing / 100);
                     await new Promise(resolve => {
-                        const id = setTimeout(resolve, swingDelay * 1000);
+                        const id = setTimeout(() => {
+                            if (!this.stopped) resolve();
+                        }, swingDelay * 1000);
                         this.activeTimeouts.push(id);
+                        this.pendingResolves.push(resolve);
                     });
+                }
+            }
+        };
+        return playSeq();
+    }
+    playSequenceLoop(args) {
+        this._initAudio();
+        this.stopped = false;
+        const sequenceStr = args.SEQUENCE;
+        const beats = parseFloat(args.BEATS);
+        const loopCount = parseInt(args.LOOP);
+        const sequence = sequenceStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+        const playSeq = async () => {
+            for (let l = 0; l < loopCount; l++) {
+                if (this.stopped) break;
+                for (let i = 0; i < sequence.length; i++) {
+                    if (this.stopped) break;
+                    const note = sequence[i];
+                    await this.playNote({ NOTE: note, BEATS: beats });
+                    if (this.swing > 0 && i % 2 === 1) {
+                        const swingDelay = (60 / this.tempo * beats) * (this.swing / 100);
+                        await new Promise(resolve => {
+                            const id = setTimeout(() => {
+                                if (!this.stopped) resolve();
+                            }, swingDelay * 1000);
+                            this.activeTimeouts.push(id);
+                            this.pendingResolves.push(resolve);
+                        });
+                    }
                 }
             }
         };
@@ -1445,11 +1870,13 @@ class musicplusExtension {
     }
     playChordProgression(args) {
         this._initAudio();
+        this.stopped = false;
         const progressionStr = args.PROGRESSION;
         const beats = parseFloat(args.BEATS);
         const chords = progressionStr.split(';');
         const playProg = async () => {
             for (const chordDesc of chords) {
+                if (this.stopped) break;
                 const parts = chordDesc.trim().split(/\s+/);
                 if (parts.length < 2) continue;
                 const root = parts[0];
@@ -1493,6 +1920,13 @@ class musicplusExtension {
         if (this.chorusLFO) this.chorusLFO.frequency.value = rate;
         if (this.chorusLFOGain) this.chorusLFOGain.gain.value = depth * 0.05;
         if (this.chorusMixGain) this.chorusMixGain.gain.value = mix;
+    }
+    setTremolo(args) {
+        this._initTremolo();
+        const depth = Math.max(0, Math.min(100, parseInt(args.DEPTH))) / 100;
+        const rate = Math.max(0.1, Math.min(20, parseFloat(args.RATE)));
+        if (this.tremoloLFO) this.tremoloLFO.frequency.value = rate;
+        if (this.tremoloLFOGain) this.tremoloLFOGain.gain.value = depth * 0.5;
     }
     setDistortion(args) {
         this._initDistortion();
@@ -1558,6 +1992,7 @@ class musicplusExtension {
         return new Promise(resolve => {
             const id = setTimeout(resolve, duration * 1000);
             this.activeTimeouts.push(id);
+            this.pendingResolves.push(resolve);
         });
     }
     playFall(args) {
@@ -1607,10 +2042,12 @@ class musicplusExtension {
         return new Promise(resolve => {
             const id = setTimeout(resolve, duration * 1000);
             this.activeTimeouts.push(id);
+            this.pendingResolves.push(resolve);
         });
     }
     playTrill(args) {
         this._initAudio();
+        this.stopped = false;
         const note1 = parseInt(args.NOTE);
         const note2 = parseInt(args.ALT_NOTE);
         const speed = Math.max(0.05, parseFloat(args.SPEED));
@@ -1619,10 +2056,24 @@ class musicplusExtension {
         const cycles = Math.floor(totalBeats / (speed * 2));
         const playTrillSeq = async () => {
             for (let i = 0; i < cycles; i++) {
+                if (this.stopped) break;
                 await this._playNoteAdvanced(note1, speed * 0.8);
-                await new Promise(r => setTimeout(r, speed * 1000));
+                await new Promise(r => {
+                    const id = setTimeout(() => {
+                        if (!this.stopped) r();
+                    }, speed * 1000);
+                    this.activeTimeouts.push(id);
+                    this.pendingResolves.push(r);
+                });
+                if (this.stopped) break;
                 await this._playNoteAdvanced(note2, speed * 0.8);
-                await new Promise(r => setTimeout(r, speed * 1000));
+                await new Promise(r => {
+                    const id = setTimeout(() => {
+                        if (!this.stopped) r();
+                    }, speed * 1000);
+                    this.activeTimeouts.push(id);
+                    this.pendingResolves.push(r);
+                });
             }
         };
         return playTrillSeq();
@@ -1643,6 +2094,7 @@ class musicplusExtension {
     }
     playScale(args) {
         this._initAudio();
+        this.stopped = false;
         const root = parseInt(args.ROOT);
         const scaleType = args.SCALE;
         const beats = parseFloat(args.BEATS);
@@ -1650,6 +2102,7 @@ class musicplusExtension {
         const notes = intervals.map(interval => root + interval);
         const playScaleSeq = async () => {
             for (const note of notes) {
+                if (this.stopped) break;
                 await this.playNote({ NOTE: note, BEATS: beats });
             }
         };
@@ -1699,6 +2152,67 @@ class musicplusExtension {
         const rms = Math.sqrt(sum / this.micTimeDataArray.length);
         const volume = Math.min(100, Math.round(rms * 300));
         return volume;
+    }
+    setPan(args) {
+        this._initAudio();
+        const pan = Math.max(-100, Math.min(100, parseInt(args.PAN))) / 100;
+        if (this.pannerNode) {
+            this.pannerNode.pan.value = pan;
+        }
+    }
+    _playClick(volume) {
+        if (!this.audioContext) return;
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.inputGain);
+        osc.frequency.value = 1000;
+        const vol = Math.max(0, Math.min(100, volume)) / 100;
+        gain.gain.setValueAtTime(vol * 0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        osc.start(now);
+        osc.stop(now + 0.05);
+    }
+    startMetronome(args) {
+        if (this.metronomePlaying) return;
+        this._initAudio();
+        this.metronomePlaying = true;
+        const volume = args.VOLUME;
+        const interval = (60 / this.tempo) * 1000;
+        const playClick = () => {
+            if (!this.metronomePlaying) return;
+            this._playClick(volume);
+            this.metronomeTimer = setTimeout(playClick, interval);
+        };
+        playClick();
+    }
+    stopMetronome() {
+        this.metronomePlaying = false;
+        if (this.metronomeTimer) {
+            clearTimeout(this.metronomeTimer);
+            this.metronomeTimer = null;
+        }
+    }
+    clearEffects() {
+        this.setReverb({ AMOUNT: 0 });
+        this.setDelay({ FEEDBACK: 0, TIME: 0.3, MIX: 0 });
+        this.setChorus({ DEPTH: 0, RATE: 1.5, MIX: 0 });
+        this.setTremolo({ DEPTH: 0, RATE: 5 });
+        this.setDistortion({ AMOUNT: 0 });
+        this.setGlobalFilter({ FREQ: -1 });
+        this.setPitch({ PITCH: 0 });
+        if (this.pannerNode) this.pannerNode.pan.value = 0;
+    }
+    getIsPlaying() {
+        return this.activeSources.length > 0;
+    }
+    getRandomNote(args) {
+        const min = parseInt(args.MIN);
+        const max = parseInt(args.MAX);
+        if (min > max) return max;
+        return Math.floor(Math.random() * (max - min + 1)) + min;
     }
 }
 Scratch.extensions.register(new musicplusExtension());
