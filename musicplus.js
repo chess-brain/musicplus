@@ -38,10 +38,15 @@ class musicplusExtension {
         this.scoreIndex = 0;
         this.scorePlaying = false;
         this.savedScores = {};
+        this.scoreLoop = false;
+        this.scoreLoopCount = 0;
+        this.scoreCurrentLoop = 0;
+        this.scoreStartTime = 0;
+        this.scorePaused = false;
         this._initAudio();
         this.version1 = 1;
         this.version2 = 2;
-        this.version3 = 4;
+        this.version3 = 6;
         this.beta = false;
         this.beta_num = 1;
         this.version = `V${this.version1}.${this.version2}.${this.version3}${this.beta ? ' beta ' + this.beta_num : ''}`;
@@ -333,7 +338,7 @@ class musicplusExtension {
         return {
             id: 'musicplus',
             name: '音乐 +',
-            blockIconURI: 'image/svg+xml;base64,PHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHdpZHRoPSI0My4xMzYiIGhlaWdodD0iNTQuNjg3MDYiIHZpZXdCb3g9IjAsMCw0My4xMzYsNTQuNjg3MDYiPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMTguNDMyLC0xNTIuNjU2NDcpIj48ZyBzdHJva2U9IiMwMDAwMDAiIHN0cm9rZS13aWR0aD0iMCIgc3Ryb2tlLW1pdGVybGltaXQ9IjEwIj48cGF0aCBkPSJNMjM4LjQ0NjM2LDE5OS40MTkxNWMwLDQuMDEwNDEgLTQuMTgxODksNy45MjQzNyAtOS4zNDA1Miw3LjkyNDM3Yy01LjE1ODYzLDAgLTkuMzQwNTIsLTMuOTEzOTYgLTkuMzQwNTIsLTcuOTI0MzdjMCwtNC4wMTA0MSA0LjE4MTg5LC03LjYyMzA2IDkuMzQwNTIsLTcuNjIzMDZjMS42MjExNCwwIDMuMTQ1ODIsMC4zMjEwNyA0LjQ3NDU3LDAuODg1ODhjMC4yMjQzLDAuMDk1MzUgMC42NTU2NywwLjMwNjUgMC42NTU2NywwLjMwNjVsMC4yNTg3NCwtMzIuNTA3MjdjMCwwIDYuNjA0NCw1LjE0OTQ3IDcuNzQ3NjIsNy4xMDA0NWMxLjE0MzIzLDEuOTUwOTggNS4zNjM4MSwxNi4yMDg5IDUuMzY5ODcsMTcuODM0NTZjMC4wMDE0NSwwLjM4ODg5IC0yLjgzODkyLC02LjYyMjk4IC01LjkxODY1LC0xMS4wNzYzOWMtMi4zOTc4MSwtMy40NjczMSAtMy4zNzE3MSwtNC4wMDg2MSAtMy4zNzE3MSwtNC4wMDg2MWMwLDAgMC4xMjQ0MywyOC44ODE4OCAwLjEyNDQzLDI5LjA4Nzk1eiIgZmlsbD0iIzM3M2I3NyIvPjxwYXRoIGQ9Ik0yNTAuNzQ1MjcsMTY0LjY2NTY3YzAsMCAtMy45NTI3NCwwLjAzNTI5IC00Ljk2ODkzLDAuMDQ0MzZjLTAuNDQ5NjYsMC4wMDQwMiAtMC45NzI5NywwLjAwODY5IC0wLjk3Mjk3LDAuMDA4Njl2LTUuMTk5MTVsNS45NDE5LC0wLjA1MzA2bDAuMDUzMDUsLTYuMDQ4aDQuOTg2OTVsMC4wNTMwNCw2LjA0OGw1LjcyOTY5LC0wLjA1MzA0djUuMDkzMDVsLTUuNzI5NjgsMC4wNTMwNWwtMC4wNTMwNSw1LjcyOTY4aC01LjA5MzA1eiIgZmlsbD0iIzRhMDUxOSIvPjxwYXRoIGQ9Ik0yMzcuMTEzMDMsMTk3LjI1MjQ5YzAsNC4wMTA0MSAtNC4xODE4OSw3LjkyNDM3IC05LjM0MDUxLDcuOTI0MzdjLTUuMTU4NjMsMCAtOS4zNDA1MiwtMy45MTM5NiAtOS4zNDA1MiwtNy45MjQzN2MwLC00LjAxMDQxIDQuMTgxODksLTcuNjIzMDYgOS4zNDA1MiwtNy42MjMwNmMxLjYyMTE0LDAgMy4xNDU4MiwwLjMyMTA3IDQuNDc0NTYsMC44ODU4OGMwLjIyNDMsMC4wOTUzNSAwLjY1NTY3LDAuMzA2NSAwLjY1NTY3LDAuMzA2NWwwLjI1ODc0LC0zMi41MDcyN2MwLDAgNi42MDQ0LDUuMTQ5NDcgNy43NDc2Miw3LjEwMDQ1YzEuMTQzMjMsMS45NTA5OCA1LjM2MzgsMTYuMjA4OSA1LjM2OTg2LDE3LjgzNDU2YzAuMDAxNDUsMC4zODg4OSAtMi44Mzg5MSwtNi42MjI5OSAtNS45MTg2NSwtMTEuMDc2MzljLTIuMzk3ODEsLTMuNDY3MzEgLTMuMzcxNzEsLTQuMDA4NjEgLTMuMzcxNzEsLTQuMDA4NjFjMCwwIDAuMTI0NDMsMjguODgxODggMC4xMjQ0MywyOS4wODc5NXoiIGZpbGw9IiM3NjdlZmYiLz48cGF0aCBkPSJNMjQ5Ljc2NTUyLDE2My45MDM2NGwtNS45NDE4OSwwLjA1MzA1di01LjE5OTE1bDUuOTQxODksLTAuMDUzMDZsMC4wNTMwNSwtNi4wNDhoNC45ODY5NGwwLjA1MzA1LDYuMDQ4bDUuNzI5NjgsLTAuMDUzMDR2NS4wOTMwNWwtNS43Mjk2OCwwLjA1MzA1bC0wLjA1MzA1LDUuNzI5NjloLTUuMDkzMDV6IiBmaWxsPSIjZWExMDRlIi8+PC9nPjwvZz48L3N2Zz48IS0tcm90YXRpb25DZW50ZXI6MjEuNTY3OTk4MzMzMzMzMzI6MjcuMzQzNTI5MTY2NjY2NjU2LS0+',
+            blockIconURI: 'data:image/svg+xml;base64,PHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHdpZHRoPSI0My4xMzYiIGhlaWdodD0iNTQuNjg3MDYiIHZpZXdCb3g9IjAsMCw0My4xMzYsNTQuNjg3MDYiPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMTguNDMyLC0xNTIuNjU2NDcpIj48ZyBzdHJva2U9IiMwMDAwMDAiIHN0cm9rZS13aWR0aD0iMCIgc3Ryb2tlLW1pdGVybGltaXQ9IjEwIj48cGF0aCBkPSJNMjM4LjQ0NjM2LDE5OS40MTkxNWMwLDQuMDEwNDEgLTQuMTgxODksNy45MjQzNyAtOS4zNDA1Miw3LjkyNDM3Yy01LjE1ODYzLDAgLTkuMzQwNTIsLTMuOTEzOTYgLTkuMzQwNTIsLTcuOTI0MzdjMCwtNC4wMTA0MSA0LjE4MTg5LC03LjYyMzA2IDkuMzQwNTIsLTcuNjIzMDZjMS42MjExNCwwIDMuMTQ1ODIsMC4zMjEwNyA0LjQ3NDU3LDAuODg1ODhjMC4yMjQzLDAuMDk1MzUgMC42NTU2NywwLjMwNjUgMC42NTU2NywwLjMwNjVsMC4yNTg3NCwtMzIuNTA3MjdjMCwwIDYuNjA0NCw1LjE0OTQ3IDcuNzQ3NjIsNy4xMDA0NWMxLjE0MzIzLDEuOTUwOTggNS4zNjM4MSwxNi4yMDg5IDUuMzY5ODcsMTcuODM0NTZjMC4wMDE0NSwwLjM4ODg5IC0yLjgzODkyLC02LjYyMjk4IC01LjkxODY1LC0xMS4wNzYzOWMtMi4zOTc4MSwtMy40NjczMSAtMy4zNzE3MSwtNC4wMDg2MSAtMy4zNzE3MSwtNC4wMDg2MWMwLDAgMC4xMjQ0MywyOC44ODE4OCAwLjEyNDQzLDI5LjA4Nzk1eiIgZmlsbD0iIzM3M2I3NyIvPjxwYXRoIGQ9Ik0yNTAuNzQ1MjcsMTY0LjY2NTY3YzAsMCAtMy45NTI3NCwwLjAzNTI5IC00Ljk2ODkzLDAuMDQ0MzZjLTAuNDQ5NjYsMC4wMDQwMiAtMC45NzI5NywwLjAwODY5IC0wLjk3Mjk3LDAuMDA4Njl2LTUuMTk5MTVsNS45NDE5LC0wLjA1MzA2bDAuMDUzMDUsLTYuMDQ4aDQuOTg2OTVsMC4wNTMwNCw2LjA0OGw1LjcyOTY5LC0wLjA1MzA0djUuMDkzMDVsLTUuNzI5NjgsMC4wNTMwNWwtMC4wNTMwNSw1LjcyOTY4aC01LjA5MzA1eiIgZmlsbD0iIzRhMDUxOSIvPjxwYXRoIGQ9Ik0yMzcuMTEzMDMsMTk3LjI1MjQ5YzAsNC4wMTA0MSAtNC4xODE4OSw3LjkyNDM3IC05LjM0MDUxLDcuOTI0MzdjLTUuMTU4NjMsMCAtOS4zNDA1MiwtMy45MTM5NiAtOS4zNDA1MiwtNy45MjQzN2MwLC00LjAxMDQxIDQuMTgxODksLTcuNjIzMDYgOS4zNDA1MiwtNy42MjMwNmMxLjYyMTE0LDAgMy4xNDU4MiwwLjMyMTA3IDQuNDc0NTYsMC44ODU4OGMwLjIyNDMsMC4wOTUzNSAwLjY1NTY3LDAuMzA2NSAwLjY1NTY3LDAuMzA2NWwwLjI1ODc0LC0zMi41MDcyN2MwLDAgNi42MDQ0LDUuMTQ5NDcgNy43NDc2Miw3LjEwMDQ1YzEuMTQzMjMsMS45NTA5OCA1LjM2MzgsMTYuMjA4OSA1LjM2OTg2LDE3LjgzNDU2YzAuMDAxNDUsMC4zODg4OSAtMi44Mzg5MSwtNi42MjI5OSAtNS45MTg2NSwtMTEuMDc2MzljLTIuMzk3ODEsLTMuNDY3MzEgLTMuMzcxNzEsLTQuMDA4NjEgLTMuMzcxNzEsLTQuMDA4NjFjMCwwIDAuMTI0NDMsMjguODgxODggMC4xMjQ0MywyOS4wODc5NXoiIGZpbGw9IiM3NjdlZmYiLz48cGF0aCBkPSJNMjQ5Ljc2NTUyLDE2My45MDM2NGwtNS45NDE4OSwwLjA1MzA1di01LjE5OTE1bDUuOTQxODksLTAuMDUzMDZsMC4wNTMwNSwtNi4wNDhoNC45ODY5NGwwLjA1MzA1LDYuMDQ4bDUuNzI5NjgsLTAuMDUzMDR2NS4wOTMwNWwtNS43Mjk2OCwwLjA1MzA1bC0wLjA1MzA1LDUuNzI5NjloLTUuMDkzMDV6IiBmaWxsPSIjZWExMDRlIi8+PC9nPjwvZz48L3N2Zz48IS0tcm90YXRpb25DZW50ZXI6MjEuNTY3OTk4MzMzMzMzMzI6MjcuMzQzNTI5MTY2NjY2NjU2LS0+',
             color1: '#0DA57A',
             color2: '#0B8E69',
             color3: '#097A5A',
@@ -991,7 +996,7 @@ class musicplusExtension {
                     arguments: {
                         SCORE: {
                             type: Scratch.ArgumentType.STRING,
-                            defaultValue: '60-0.5\n62-0.5\n64-0.5'
+                            defaultValue: '60-0.5;62-0.5;64-0.5'
                         }
                     }
                 },
@@ -1006,6 +1011,13 @@ class musicplusExtension {
                     opcode: 'stopScore',
                     blockType: Scratch.BlockType.COMMAND,
                     text: '停止播放乐谱',
+                    arguments: {
+                    }
+                },
+                {
+                    opcode: 'pauseScore',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '暂停/继续播放乐谱',
                     arguments: {
                     }
                 },
@@ -1068,6 +1080,74 @@ class musicplusExtension {
                         LINE: {
                             type: Scratch.ArgumentType.STRING,
                             defaultValue: '60-0.5-62-0.5'
+                        }
+                    }
+                },
+                {
+                    opcode: 'setScoreLoop',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '设置乐谱循环 [LOOP] 次 (0=无限)',
+                    arguments: {
+                        LOOP: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 0
+                        }
+                    }
+                },
+                {
+                    opcode: 'getScoreTime',
+                    blockType: Scratch.BlockType.REPORTER,
+                    text: '乐谱已播放时间 (秒)',
+                    disableMonitor: false
+                },
+                {
+                    opcode: 'seekScore',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '跳转到乐谱第 [INDEX] 个音符',
+                    arguments: {
+                        INDEX: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 0
+                        }
+                    }
+                },
+                {
+                    opcode: 'exportScore',
+                    blockType: Scratch.BlockType.REPORTER,
+                    text: '导出乐谱为文本',
+                    disableMonitor: false
+                },
+                {
+                    opcode: 'importScoreFile',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '从文件导入乐谱 [FILE]',
+                    arguments: {
+                        FILE: {
+                            type: Scratch.ArgumentType.STRING,
+                            defaultValue: ''
+                        }
+                    }
+                },
+                {
+                    opcode: 'setScoreTempo',
+                    blockType: Scratch.BlockType.COMMAND,
+                    text: '设置乐谱演奏速度 [TEMPO]',
+                    arguments: {
+                        TEMPO: {
+                            type: Scratch.ArgumentType.NUMBER,
+                            defaultValue: 60
+                        }
+                    }
+                },
+                {
+                    opcode: 'getScoreInfo',
+                    blockType: Scratch.BlockType.REPORTER,
+                    text: '乐谱信息 [INFO]',
+                    arguments: {
+                        INFO: {
+                            type: Scratch.ArgumentType.STRING,
+                            menu: 'scoreInfoMenu',
+                            defaultValue: 'length'
                         }
                     }
                 }
@@ -1180,6 +1260,15 @@ class musicplusExtension {
                         { text: '合唱', value: 'chorus' },
                         { text: '失真', value: 'distortion' },
                         { text: '颤音', value: 'tremolo' }
+                    ]
+                },
+                scoreInfoMenu: {
+                    acceptReporters: true,
+                    items: [
+                        { text: '总音符数', value: 'length' },
+                        { text: '总时长 (拍)', value: 'duration' },
+                        { text: '总时长 (秒)', value: 'seconds' },
+                        { text: '当前索引', value: 'index' }
                     ]
                 }
             }
@@ -1334,6 +1423,7 @@ class musicplusExtension {
     stopAll() {
         this.stopped = true;
         this.scorePlaying = false;
+        this.scorePaused = false;
         const now = this.audioContext ? this.audioContext.currentTime : 0;
         this.activeTimeouts.forEach(id => clearTimeout(id));
         this.pendingResolves.forEach(resolve => resolve());
@@ -1354,8 +1444,8 @@ class musicplusExtension {
     }
     parseScoreLine(line) {
         const trimmed = line.trim();
-        if (trimmed === '0' || trimmed === '') {
-            return { notes: [], duration: 0.5, isRest: true };
+        if (trimmed === '0' || trimmed === '' || trimmed.startsWith('//')) {
+            return { notes: [], duration: 0.5, isRest: true, original: trimmed };
         }
         const parts = trimmed.split('-');
         const notes = [];
@@ -1366,20 +1456,23 @@ class musicplusExtension {
             notes.push(noteNum);
             if (i + 1 < parts.length) {
                 const dur = parseFloat(parts[i + 1]);
-                if (!isNaN(dur)) {
+                if (!isNaN(dur) && dur > 0) {
                     duration = dur;
                 }
             }
         }
         if (notes.length === 0) {
-            return { notes: [], duration: 0.5, isRest: true };
+            return { notes: [], duration: 0.5, isRest: true, original: trimmed };
         }
-        return { notes, duration, isRest: false };
+        return { notes, duration, isRest: false, original: trimmed };
     }
     parseScoreText(text) {
-        const lines = text.split('\n');
+        const normalized = text.replace(/\n/g, ';');
+        const lines = normalized.split(';');
         const score = [];
         for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.length === 0) continue;
             const parsed = this.parseScoreLine(line);
             if (parsed.notes.length > 0 || parsed.isRest) {
                 score.push(parsed);
@@ -1391,6 +1484,9 @@ class musicplusExtension {
         const scoreText = args.SCORE;
         this.scoreData = this.parseScoreText(scoreText);
         this.scoreIndex = 0;
+        this.scoreStartTime = 0;
+        this.scoreLoopCount = 0;
+        this.scoreCurrentLoop = 0;
         return Promise.resolve();
     }
     async playScore() {
@@ -1399,15 +1495,39 @@ class musicplusExtension {
         }
         this._initAudio();
         this.stopped = false;
+        this.scorePaused = false;
         this.scorePlaying = true;
-        this.scoreIndex = 0;
+        if (this.scoreIndex >= this.scoreData.length) {
+            this.scoreIndex = 0;
+        }
+        this.scoreStartTime = Date.now();
         const totalNotes = this.scoreData.length;
-        for (let i = 0; i < this.scoreData.length; i++) {
-            if (this.stopped || !this.scorePlaying) {
-                break;
+        while (this.scorePlaying && !this.stopped) {
+            if (this.scorePaused) {
+                await new Promise(resolve => {
+                    const checkPause = () => {
+                        if (!this.scorePaused) {
+                            resolve();
+                        } else {
+                            setTimeout(checkPause, 100);
+                        }
+                    };
+                    checkPause();
+                });
             }
-            const event = this.scoreData[i];
-            this.scoreIndex = i;
+            if (this.scoreIndex >= this.scoreData.length) {
+                if (this.scoreLoop) {
+                    this.scoreCurrentLoop++;
+                    if (this.scoreLoopCount > 0 && this.scoreCurrentLoop >= this.scoreLoopCount) {
+                        break;
+                    }
+                    this.scoreIndex = 0;
+                    this.scoreStartTime = Date.now();
+                } else {
+                    break;
+                }
+            }
+            const event = this.scoreData[this.scoreIndex];
             if (event.isRest) {
                 await this.rest({ BEATS: event.duration });
             } else {
@@ -1428,14 +1548,23 @@ class musicplusExtension {
                     });
                 }
             }
+            this.scoreIndex++;
         }
         this.scorePlaying = false;
-        this.scoreIndex = 0;
+        if (!this.stopped && this.scoreIndex >= this.scoreData.length) {
+            this.scoreIndex = 0;
+        }
     }
     stopScore() {
         this.stopped = true;
         this.scorePlaying = false;
+        this.scorePaused = false;
         this.scoreIndex = 0;
+    }
+    pauseScore() {
+        if (this.scorePlaying) {
+            this.scorePaused = !this.scorePaused;
+        }
     }
     getScoreProgress() {
         if (!this.scoreData || this.scoreData.length === 0) return 0;
@@ -1463,6 +1592,7 @@ class musicplusExtension {
         if (this.savedScores[name]) {
             this.scoreData = JSON.parse(JSON.stringify(this.savedScores[name]));
             this.scoreIndex = 0;
+            this.scoreStartTime = 0;
         }
         return Promise.resolve();
     }
@@ -1476,6 +1606,65 @@ class musicplusExtension {
             return count;
         }
         return 0;
+    }
+    setScoreLoop(args) {
+        const loop = parseInt(args.LOOP);
+        this.scoreLoop = loop > 0;
+        this.scoreLoopCount = loop;
+        this.scoreCurrentLoop = 0;
+    }
+    getScoreTime() {
+        if (!this.scorePlaying || this.scoreStartTime === 0) return 0;
+        return ((Date.now() - this.scoreStartTime) / 1000).toFixed(2);
+    }
+    seekScore(args) {
+        const index = parseInt(args.INDEX);
+        if (this.scoreData && index >= 0 && index < this.scoreData.length) {
+            this.scoreIndex = index;
+            this.scoreStartTime = Date.now();
+        }
+    }
+    exportScore() {
+        if (!this.scoreData) return '';
+        return this.scoreData.map(event => {
+            if (event.isRest) return '0';
+            return event.notes.map(n => `${n}-${event.duration}`).join('-');
+        }).join(';');
+    }
+    importScoreFile(args) {
+        const fileText = args.FILE;
+        if (fileText && fileText.trim().length > 0) {
+            this.scoreData = this.parseScoreText(fileText);
+            this.scoreIndex = 0;
+        }
+        return Promise.resolve();
+    }
+    setScoreTempo(args) {
+        this.tempo = Math.max(20, Math.min(500, parseInt(args.TEMPO)));
+    }
+    getScoreInfo(args) {
+        const infoType = args.INFO;
+        if (!this.scoreData) return '0';
+        switch (infoType) {
+            case 'length':
+                return this.scoreData.length;
+            case 'duration':
+                let totalBeats = 0;
+                for (const event of this.scoreData) {
+                    totalBeats += event.duration;
+                }
+                return totalBeats.toFixed(2);
+            case 'seconds':
+                let totalBeats2 = 0;
+                for (const event of this.scoreData) {
+                    totalBeats2 += event.duration;
+                }
+                return ((totalBeats2 / this.tempo) * 60).toFixed(2);
+            case 'index':
+                return this.scoreIndex;
+            default:
+                return '0';
+        }
     }
     playDrum(args) {
         this._initAudio();
